@@ -1,0 +1,12 @@
+[submodule "third_party/redox"]
+	path = third_party/redox
+	url = http://github.com/dcrankshaw/redox.git
+[submodule "third_party/fmt"]
+	path = third_party/fmt
+	url = https://github.com/fmtlib/fmt.git
+[submodule "third_party/glog"]
+	path = third_party/glog
+	url = https://github.com/google/glog.git
+[submodule "third_party/readerwriterqueue"]
+	path = third_party/readerwriterqueue
+	url = https://github.com/cameron314/readerwriterqueue.git

@@ -1,0 +1,43 @@
+
+set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda/bin")
+
+
+find_library(CUDART_LIB cudart
+        HINTS
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib64"
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib"
+        "${CUDA_TOOLKIT_ROOT_DIR}"
+        )
+
+add_library(CUDA::cudart IMPORTED INTERFACE)
+set_target_properties(CUDA::cudart PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES
+        "${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}"
+        INTERFACE_LINK_LIBRARIES
+        "${CUDART_LIB}")
+
+find_library(CUDA_LIB cuda
+        HINTS
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib64"
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib"
+        "${CUDA_TOOLKIT_ROOT_DIR}"
+        )
+add_library(CUDA::cuda IMPORTED INTERFACE)
+set_target_properties(CUDA::cuda PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES
+        "${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}"
+        INTERFACE_LINK_LIBRARIES
+        "${CUDA_LIB}")
+
+find_library(CUPTI_LIB cupti
+        HINTS
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib64"
+        "${CUDA_TOOLKIT_ROOT_DIR}/../lib"
+        "${CUDA_TOOLKIT_ROOT_DIR}"
+        )
+add_library(CUDA::cupti IMPORTED INTERFACE)
+set_target_properties(CUDA::cupti PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES
+        "${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}"
+        INTERFACE_LINK_LIBRARIES
+        "${CUPTI_LIB}")
