@@ -1,5 +1,6 @@
 #include <fmt/format.h>
 #include <glog/logging.h>
+#include <set>
 
 #include "common.h"
 #include "constants.h"
@@ -26,10 +27,11 @@ static uint64_t startTimestamp;
 void Fijit::run() {
   LOG(INFO) << "initializing cupti activity trace";
 
+  // TODO: enable more activities!
   CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE));
   CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
+  // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
+  // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
   CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY));
   CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET));
   CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME));
@@ -42,13 +44,17 @@ void Fijit::run() {
   CUPTI_CHECK_ERROR(cuptiActivityRegisterCallbacks(
       ActivtyAPIRequestBufferCallback, ActivityAPICompleteBufferCallback));
 
+  // TODO: subscribe to more API
+  cuptiSubscribe(&subscriber, CallbackAPICallback, /*user_data*/ nullptr);
+  cuptiEnableDomain(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
+
   // Initialize CUDA Context
   LOG(INFO) << "initializing cuda context";
   cudaCtx = cuda_init();
 
-  int count = -1;
-  cudaGetDeviceCount(&count);
-  LOG(INFO) << fmt::format("Total number of device {}", count);
+  // int count = -1;
+  // cudaGetDeviceCount(&count);
+  // LOG(INFO) << fmt::format("Total number of device {}", count);
 
   CUPTI_CHECK_ERROR(cuptiGetTimestamp(&startTimestamp));
   LOG(INFO) << fmt::format("Timestamp {}", startTimestamp);
@@ -333,7 +339,7 @@ void Fijit::ActivityAPICompleteBufferCallback(CUcontext ctx, uint32_t streamId,
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        LOG(INFO) << fmt::format("activity detected: {} {}", record->kind,
+        LOG(INFO) << fmt::format("activity detected: {}",
                                  ACTIVITY_KIND_ENUM_MAP[record->kind]);
         printActivity(record);
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
@@ -354,4 +360,13 @@ void Fijit::ActivityAPICompleteBufferCallback(CUcontext ctx, uint32_t streamId,
   }
 
   free(buffer);
+}
+
+void Fijit::CallbackAPICallback(void *userdata,
+                                       CUpti_CallbackDomain domain,
+                                       CUpti_CallbackId cbid,
+                                       const void *cbdata) {
+  if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
+    LOG(INFO) << fmt::format("[callback api] domain {} callback id {}", domain, CALLBACK_API_DRIVER_ID_MAP[cbid]);
+  }
 }
