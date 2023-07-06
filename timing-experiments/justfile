@@ -1,0 +1,16 @@
+default:
+    just --list
+
+run-time-slice:
+    python diffusion-1.py --num-workers=1 --num-iter=20 --output-file=time-slice-1-workers.csv
+    python diffusion-1.py --num-workers=2 --num-iter=20 --output-file=time-slice-2-workers.csv
+    python diffusion-1.py --num-workers=3 --num-iter=20 --output-file=time-slice-3-workers.csv
+
+run-mps-server:
+    nvidia-cuda-mps-control -f
+
+# make sure to run this after running run-mps-server
+run-mps:
+    #CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps python diffusion-1.py --num-workers=1 --num-iter=20 --output-file=mps-1-workers.csv
+    #CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps python diffusion-1.py --num-workers=2 --num-iter=20 --output-file=mps-2-workers.csv
+    CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps python diffusion-1.py --num-workers=3 --num-iter=20 --output-file=mps-3-workers.csv

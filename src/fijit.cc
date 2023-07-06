@@ -1,11 +1,17 @@
 #include <fmt/format.h>
-#include <glog/logging.h>
 #include <set>
+#include <string>
 
 #include "common.h"
 #include "constants.h"
 #include "cupti.h"
 #include "fijit.h"
+// #include "torch/torch.h"
+// #include "disable-torch-log.h.inc"
+#include <glog/logging.h>
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 #define CUPTI_CHECK_ERROR(call)                                                \
   {                                                                            \
@@ -18,39 +24,71 @@
     }                                                                          \
   }
 
-Fijit::Fijit() {}
+// singleton to get and set the global fijit pointer
+class FijitContainer {
+public:
+   Fijit *get() {
+    return fijit_;
+  }
+   void set(Fijit *fijit) {
+    fijit_ = fijit;
+  }
+private:
+   Fijit *fijit_ = nullptr;
+};
+
+FijitContainer* get_fijit_container() {
+  static FijitContainer fijit_container;
+  return &fijit_container;
+}
+
+
+Fijit::Fijit(bool enable_activity_api, bool enable_callback_api)
+    : enable_activity_api_{enable_activity_api}, enable_callback_api_{
+                                                     enable_callback_api} {
+  get_fijit_container()->set(this);
+                                                     }
 
 Fijit::~Fijit() { CUPTI_CHECK_ERROR(cuptiActivityFlushAll(1)); }
 
 static uint64_t startTimestamp;
 
 void Fijit::run() {
-  LOG(INFO) << "initializing cupti activity trace";
+  // torch::Tensor tensor = torch::rand({2, 3});
+  // LOG(INFO) << tensor;
+  // LOG(INFO) << "Created tensor";
 
-  // TODO: enable more activities!
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT));
-  // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
-  // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MARKER));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-  CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD));
+  if (enable_activity_api_) {
+    LOG(INFO) << "initializing cupti activity trace";
 
-  // TODO: customize the buffer size and limit with
-  // cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT,
-  CUPTI_CHECK_ERROR(cuptiActivityRegisterCallbacks(
-      ActivtyAPIRequestBufferCallback, ActivityAPICompleteBufferCallback));
+    // TODO: enable more activities!
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_NAME));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MARKER));
+    CUPTI_CHECK_ERROR(
+        cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+    // CUPTI_CHECK_ERROR(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD));
 
-  // TODO: subscribe to more API
-  cuptiSubscribe(&subscriber, CallbackAPICallback, /*user_data*/ nullptr);
-  cuptiEnableDomain(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
+    // TODO: customize the buffer size and limit with
+    // cuptiActivitySetAttribute(CUPTI_ACTIVITY_ATTR_DEVICE_BUFFER_POOL_LIMIT,
+    CUPTI_CHECK_ERROR(cuptiActivityRegisterCallbacks(
+        ActivtyAPIRequestBufferCallback, ActivityAPICompleteBufferCallback));
+  }
+
+  if (enable_callback_api_) {
+    // TODO: subscribe to more API
+    cuptiSubscribe(&subscriber, CallbackAPICallback, /*user_data*/ nullptr);
+    cuptiEnableDomain(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
+  }
 
   // Initialize CUDA Context
-  LOG(INFO) << "initializing cuda context";
-  cudaCtx = cuda_init();
+  // LOG(INFO) << "initializing cuda context";
+  // cudaCtx = cuda_init();
 
   // int count = -1;
   // cudaGetDeviceCount(&count);
@@ -328,6 +366,22 @@ static void printActivity(CUpti_Activity *record) {
   }
 }
 
+// implement get_kernel_records by returning a list of kernel records in json format
+std::vector<std::string> Fijit::get_kernel_records() {
+  std::vector<std::string> kernel_records;
+  for (auto &kernel : kernel_records_) {
+    json kernel_record = {
+        {"name", std::string(kernel.name)},
+        {"start", uint64_t(kernel.start)},
+        {"end", uint64_t(kernel.end)},
+        {"stream", uint32_t(kernel.streamId)},
+    };
+    kernel_records.push_back(kernel_record.dump());
+  }
+  return kernel_records;
+}
+
+
 void Fijit::ActivityAPICompleteBufferCallback(CUcontext ctx, uint32_t streamId,
                                               uint8_t *buffer, size_t size,
                                               size_t validSize) {
@@ -339,9 +393,11 @@ void Fijit::ActivityAPICompleteBufferCallback(CUcontext ctx, uint32_t streamId,
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        LOG(INFO) << fmt::format("activity detected: {}",
-                                 ACTIVITY_KIND_ENUM_MAP[record->kind]);
-        printActivity(record);
+        // LOG(INFO) << fmt::format("activity detected: {}",
+        //                          ACTIVITY_KIND_ENUM_MAP[record->kind]);
+        CUpti_ActivityKernel7 *kernel = (CUpti_ActivityKernel7 *)record;
+        get_fijit_container()->get()->kernel_records_.push_back(*kernel);
+        // printActivity(record);
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
         break;
       else {
@@ -362,11 +418,10 @@ void Fijit::ActivityAPICompleteBufferCallback(CUcontext ctx, uint32_t streamId,
   free(buffer);
 }
 
-void Fijit::CallbackAPICallback(void *userdata,
-                                       CUpti_CallbackDomain domain,
-                                       CUpti_CallbackId cbid,
-                                       const void *cbdata) {
+void Fijit::CallbackAPICallback(void *userdata, CUpti_CallbackDomain domain,
+                                CUpti_CallbackId cbid, const void *cbdata) {
   if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
-    LOG(INFO) << fmt::format("[callback api] domain {} callback id {}", domain, CALLBACK_API_DRIVER_ID_MAP[cbid]);
+    LOG(INFO) << fmt::format("[callback api] domain {} callback id {}", domain,
+                             CALLBACK_API_DRIVER_ID_MAP[cbid]);
   }
 }

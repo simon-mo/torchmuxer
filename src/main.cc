@@ -12,7 +12,7 @@ using namespace std;
 int main(int argc, char *argv[]) {
   // Setup logging
   FLAGS_logtostderr = 1;
-  FLAGS_colorlogtostderr = 1;
+  // FLAGS_colorlogtostderr = 1;
   google::InitGoogleLogging(argv[0]);
 
   // Setup CLI parsing
@@ -35,6 +35,7 @@ int main(int argc, char *argv[]) {
     std::set_terminate([]() { backtrace(); });
   }
 
-  Fijit fijit;
+  Fijit fijit = Fijit(false, false);
   fijit.run();
+  LOG(INFO) << "done running";
 }

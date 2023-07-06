@@ -1,0 +1,11 @@
+default:
+    just --list
+
+_compile:
+    cd ../build; make -j
+
+_cp_binary: _compile
+    cp ../build/fijit_py.cpython-310-x86_64-linux-gnu.so .
+
+run: _cp_binary
+    python diffusion-1.py --num-iter=10 --num-streams=2 --output-file=timing.csv

@@ -5,17 +5,24 @@
 #include <cuda_runtime.h>
 #include <cupti.h>
 
+#include <vector>
+#include <string>
 
-using namespace std;
 
 class Fijit {
 public:
-  Fijit();
+  Fijit(bool enable_activity_api, bool enable_callback_api);
   ~Fijit();
 
   void run();
+  std::vector<std::string> get_kernel_records();
 
 private:
+  bool enable_activity_api_;
+  bool enable_callback_api_;
+
+  std::vector<CUpti_ActivityKernel7> kernel_records_;
+
   CUcontext cudaCtx;
   CUpti_SubscriberHandle subscriber;
 
